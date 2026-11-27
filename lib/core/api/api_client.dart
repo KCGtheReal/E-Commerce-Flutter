@@ -64,7 +64,7 @@ class ApiClient {
   String? Function()? _baseUrlResolver;
   VoidCallback? _onUnauthorized;
 
-  static const Duration defaultTimeout = Duration(seconds: 15);
+  static const Duration defaultTimeout = Duration(seconds: 20);
 
   void attachContext({
     String Function()? localeResolver,

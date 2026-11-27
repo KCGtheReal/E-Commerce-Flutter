@@ -75,8 +75,8 @@ class RuntimeEndpointResolver {
   RuntimeEndpointResolver({
     http.Client? httpClient,
     RuntimeEndpointsFetcher? endpointsFetcher,
-    Duration localProbeTimeout = const Duration(milliseconds: 700),
-    Duration tunnelProbeTimeout = const Duration(seconds: 3),
+    Duration localProbeTimeout = const Duration(milliseconds: 1200),
+    Duration tunnelProbeTimeout = const Duration(seconds: 10),
   })  : _httpClient = httpClient ?? http.Client(),
         _endpointsFetcher = endpointsFetcher,
         _localProbeTimeout = localProbeTimeout,
@@ -139,7 +139,8 @@ class RuntimeEndpointResolver {
       }
     }
 
-    // 2. Phone is away from PC LAN (e.g. 4G/5G or Public Firewall): try live HTTPS tunnels concurrently.
+    // 2. Phone is away from PC LAN (e.g. 4G/5G or Public Firewall): race live HTTPS tunnels
+    //    and return immediately on the first reachable one.
     final tunnelCandidates = <String>[
       if (discovered?.tunnelUrl != null && discovered!.tunnelUrl!.isNotEmpty)
         discovered.tunnelUrl!,
@@ -150,23 +151,62 @@ class RuntimeEndpointResolver {
     ];
 
     if (tunnelCandidates.isNotEmpty) {
-      final tunnelChecks = await Future.wait<bool>(
-        tunnelCandidates.map(
-          (url) => _isLaravelReachable(url, _tunnelProbeTimeout),
-        ),
+      final fastWinner = await _pickFirstReachableTunnel(
+        tunnelCandidates,
+        _tunnelProbeTimeout,
       );
-      for (var i = 0; i < tunnelCandidates.length; i++) {
-        if (tunnelChecks[i]) {
-          // HTTPS tunnel proxies directly to PC Laravel, which already calls PC :4000.
-          return ResolvedEndpointSelection(
-            backendUrl: tunnelCandidates[i],
-            gatewayUrl: '',
-          );
-        }
+      if (fastWinner != null) {
+        return ResolvedEndpointSelection(
+          backendUrl: fastWinner,
+          gatewayUrl: '',
+        );
+      }
+
+      // Never fall back to dead emulator 10.0.2.2 on a physical device when a live
+      // HTTPS tunnel URL was published in Firestore — let ApiClient retry with its full timeout.
+      if (targetPlatform == TargetPlatform.android ||
+          targetPlatform == TargetPlatform.iOS) {
+        return ResolvedEndpointSelection(
+          backendUrl: tunnelCandidates.first,
+          gatewayUrl: '',
+        );
       }
     }
 
     return null;
+  }
+
+  Future<String?> _pickFirstReachableTunnel(
+    List<String> candidates,
+    Duration timeout,
+  ) async {
+    if (candidates.isEmpty) {
+      return null;
+    }
+    final completer = Completer<String?>();
+    var remaining = candidates.length;
+
+    for (final url in candidates) {
+      unawaited(
+        _isLaravelReachable(url, timeout).then((ok) {
+          if (ok && !completer.isCompleted) {
+            completer.complete(url);
+            return;
+          }
+          remaining -= 1;
+          if (remaining == 0 && !completer.isCompleted) {
+            completer.complete(null);
+          }
+        }).catchError((_) {
+          remaining -= 1;
+          if (remaining == 0 && !completer.isCompleted) {
+            completer.complete(null);
+          }
+        }),
+      );
+    }
+
+    return completer.future;
   }
 
   Future<DiscoveredRuntimeEndpoints?> _fetchEndpoints() async {

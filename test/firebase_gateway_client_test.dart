@@ -943,5 +943,65 @@ void main() {
         'https://live-cf.trycloudflare.com/api/v1/home',
       ]);
     });
+
+    test(
+        'picks first healthy tunnel fast and keeps Firestore tunnelUrl on Android even if probe times out',
+        () async {
+      final raceClient = MockClient((request) async {
+        final full = request.url.toString();
+        if (full == 'https://fast-tunnel.trycloudflare.com/api/v1/pages/about') {
+          return jsonMockResponse(<String, dynamic>{
+            'slug': 'about',
+            'title': 'Form. Substance. Renewal.',
+          });
+        }
+        if (full == 'https://reset-store-cambodia.loca.lt/api/v1/pages/about') {
+          await Future<void>.delayed(const Duration(seconds: 5));
+          return jsonMockResponse(<String, dynamic>{'slug': 'about'});
+        }
+        return http.Response('timeout', 504);
+      });
+
+      final resolver = RuntimeEndpointResolver(
+        httpClient: raceClient,
+        localProbeTimeout: const Duration(milliseconds: 20),
+        tunnelProbeTimeout: const Duration(milliseconds: 300),
+        endpointsFetcher: () async => const DiscoveredRuntimeEndpoints(
+          lanApiUrl: 'http://10.30.0.158:8000',
+          tunnelUrl: 'https://fast-tunnel.trycloudflare.com',
+          localtunnelUrl: 'https://reset-store-cambodia.loca.lt',
+        ),
+      );
+
+      final sw = Stopwatch()..start();
+      final selected = await resolver.resolve(
+        platformOverride: TargetPlatform.android,
+        isWebOverride: false,
+      );
+      sw.stop();
+
+      expect(selected, isNotNull);
+      expect(selected!.backendUrl, 'https://fast-tunnel.trycloudflare.com');
+      expect(selected.gatewayUrl, '');
+      expect(sw.elapsedMilliseconds, lessThan(1500));
+
+      // If both probes return 504 on cold tunnel, Android still selects tunnelUrl rather than dead 10.0.2.2
+      final coldFallbackResolver = RuntimeEndpointResolver(
+        httpClient: MockClient((_) async => http.Response('booting', 504)),
+        localProbeTimeout: const Duration(milliseconds: 20),
+        tunnelProbeTimeout: const Duration(milliseconds: 40),
+        endpointsFetcher: () async => const DiscoveredRuntimeEndpoints(
+          lanApiUrl: 'http://10.30.0.158:8000',
+          tunnelUrl: 'https://cold-tunnel.trycloudflare.com',
+        ),
+      );
+      final coldSelection = await coldFallbackResolver.resolve(
+        platformOverride: TargetPlatform.android,
+        isWebOverride: false,
+      );
+      expect(coldSelection, isNotNull);
+      expect(coldSelection!.backendUrl, 'https://cold-tunnel.trycloudflare.com');
+      expect(coldSelection.gatewayUrl, '');
+    });
   });
 }
