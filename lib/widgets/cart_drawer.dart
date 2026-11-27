@@ -235,14 +235,17 @@ class _CartContentViewState extends State<CartContentView> {
             )
           else if (cart == null || cart.items.isEmpty)
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: ResetEmptyState(
-                  icon: Icons.shopping_bag_outlined,
-                  title: strings.get('cart_empty'),
-                  subtitle: strings.get('cart_empty_subtext'),
-                  ctaLabel: strings.get('cart_empty_cta'),
-                  onCtaPressed: widget.onContinueShopping,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: ResetEmptyState(
+                    icon: Icons.shopping_bag_outlined,
+                    title: strings.get('cart_empty'),
+                    subtitle: strings.get('cart_empty_subtext'),
+                    ctaLabel: strings.get('cart_empty_cta'),
+                    onCtaPressed: widget.onContinueShopping,
+                  ),
                 ),
               ),
             )

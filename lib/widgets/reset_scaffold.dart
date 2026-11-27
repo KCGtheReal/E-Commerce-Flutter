@@ -44,8 +44,6 @@ class ResetScaffold extends StatelessWidget {
     final palette = context.palette;
     final width = MediaQuery.sizeOf(context).width;
     final isMobile = AppBreakpoints.isMobile(width);
-    final settings = context.watch<AppSettingsProvider>();
-    final strings = settings.strings;
     final cartCount = context.watch<CartProvider>().itemCount;
     final nav = context.watch<AppNavigationProvider>();
     final auth = context.watch<AuthProvider>();
@@ -57,7 +55,8 @@ class ResetScaffold extends StatelessWidget {
       value: overlayStyle,
       child: Scaffold(
         backgroundColor: palette.scaffoldBackground,
-      body: Column(
+        extendBody: isMobile && showBottomNav,
+        body: Column(
         children: <Widget>[
           AnnouncementBar(
             onSettingsChanged: () => _triggerContextRefresh(context),
@@ -132,57 +131,11 @@ class ResetScaffold extends StatelessWidget {
         ],
       ),
       bottomNavigationBar: isMobile && showBottomNav
-          ? Container(
-              decoration: BoxDecoration(
-                color: palette.scaffoldBackground,
-                border: Border(top: BorderSide(color: palette.borderSubtle)),
-              ),
-              child: SafeArea(
-                top: false,
-                child: SizedBox(
-                  height: 62,
-                  child: Row(
-                    children: <Widget>[
-                      _BottomNavItem(
-                        icon: Icons.home_outlined,
-                        activeIcon: Icons.home,
-                        label: strings.get('nav_home'),
-                        selected: nav.tabIndex == 0,
-                        onTap: () => nav.selectTab(0),
-                      ),
-                      _BottomNavItem(
-                        icon: Icons.grid_view_outlined,
-                        activeIcon: Icons.grid_view_rounded,
-                        label: strings.get('nav_shop'),
-                        selected: nav.tabIndex == 1,
-                        onTap: () => nav.selectTab(1),
-                      ),
-                      _BottomNavItem(
-                        icon: Icons.search,
-                        activeIcon: Icons.search,
-                        label: strings.get('nav_search'),
-                        selected: false,
-                        onTap: () => SearchModal.show(context),
-                      ),
-                      _BottomNavItem(
-                        icon: Icons.shopping_bag_outlined,
-                        activeIcon: Icons.shopping_bag,
-                        label: strings.get('nav_cart'),
-                        selected: nav.tabIndex == 2,
-                        badgeCount: cartCount,
-                        onTap: () => nav.selectTab(2),
-                      ),
-                      _BottomNavItem(
-                        icon: Icons.person_outline,
-                        activeIcon: Icons.person,
-                        label: strings.get('nav_account'),
-                        selected: nav.tabIndex == 3,
-                        onTap: () => nav.selectTab(3),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+          ? _AppleFloatingNavBar(
+              tabIndex: nav.tabIndex,
+              cartCount: cartCount,
+              onSelectTab: nav.selectTab,
+              onOpenSearch: () => SearchModal.show(context),
             )
           : null,
       ),
@@ -236,14 +189,23 @@ class _MobileHeader extends StatelessWidget {
             ),
           )
         else ...<Widget>[
-          GestureDetector(
-            onTap: () {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-              context.read<AppNavigationProvider>().selectTab(0);
-            },
-            child: const ResetWordmark(fontSize: 20),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                    context.read<AppNavigationProvider>().selectTab(0);
+                  },
+                  child: const ResetWordmark(fontSize: 20),
+                ),
+              ),
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: 6),
         ],
         InkWell(
           onTap: () => PreferencesSheet.show(context),
@@ -480,12 +442,218 @@ class _NavTextBtn extends StatelessWidget {
   }
 }
 
+class _AppleFloatingNavBar extends StatelessWidget {
+  const _AppleFloatingNavBar({
+    required this.tabIndex,
+    required this.cartCount,
+    required this.onSelectTab,
+    required this.onOpenSearch,
+  });
+
+  final int tabIndex;
+  final int cartCount;
+  final ValueChanged<int> onSelectTab;
+  final VoidCallback onOpenSearch;
+
+  static BoxDecoration _floatingSurfaceDecoration({
+    required Color color,
+    required Color borderColor,
+    required bool isDark,
+    required BoxShape shape,
+    BorderRadius? borderRadius,
+  }) {
+    final shadows = isDark
+        ? <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.24),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ]
+        : <BoxShadow>[
+            BoxShadow(
+              color: AppColors.onyxBlack.withValues(alpha: 0.08),
+              blurRadius: 22,
+              offset: const Offset(0, 8),
+            ),
+            BoxShadow(
+              color: AppColors.onyxBlack.withValues(alpha: 0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ];
+
+    return BoxDecoration(
+      color: color,
+      shape: shape,
+      borderRadius: shape == BoxShape.circle ? null : borderRadius,
+      border: Border.all(color: borderColor),
+      boxShadow: shadows,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final strings = context.watch<AppSettingsProvider>().strings;
+
+    // Solid opaque elevated architectural surfaces (intentionally no liquid glass).
+    final surfaceColor = palette.elevatedSurface;
+    final borderColor =
+        isDark ? const Color(0xFF2E2E2E) : palette.borderSubtle;
+    final activeCapsuleColor =
+        isDark ? const Color(0xFF2B2B2B) : const Color(0xFFF2EFE9);
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
+    final clampedIndex = tabIndex.clamp(0, 3);
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: DecoratedBox(
+                key: const ValueKey<String>('apple-floating-nav-pill'),
+                decoration: _floatingSurfaceDecoration(
+                  color: surfaceColor,
+                  borderColor: borderColor,
+                  isDark: isDark,
+                  shape: BoxShape.rectangle,
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
+                ),
+                child: SizedBox(
+                  height: 62,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final slotWidth = constraints.maxWidth / 4;
+                        final visualSlot =
+                            isRtl ? (3 - clampedIndex) : clampedIndex;
+                        return Stack(
+                          children: <Widget>[
+                            AnimatedPositioned(
+                              duration: AppMotion.stateTransition,
+                              curve: AppMotion.curve,
+                              left: visualSlot * slotWidth,
+                              top: 0,
+                              bottom: 0,
+                              width: slotWidth,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: activeCapsuleColor,
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadii.pill,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Row(
+                              children: <Widget>[
+                                _BottomNavItem(
+                                  icon: Icons.home_outlined,
+                                  activeIcon: Icons.home_rounded,
+                                  label: strings.get('nav_home'),
+                                  selected: clampedIndex == 0,
+                                  pillSurfaceColor: surfaceColor,
+                                  activeCapsuleColor: activeCapsuleColor,
+                                  onTap: () => onSelectTab(0),
+                                ),
+                                _BottomNavItem(
+                                  icon: Icons.grid_view_outlined,
+                                  activeIcon: Icons.grid_view_rounded,
+                                  label: strings.get('nav_shop'),
+                                  selected: clampedIndex == 1,
+                                  pillSurfaceColor: surfaceColor,
+                                  activeCapsuleColor: activeCapsuleColor,
+                                  onTap: () => onSelectTab(1),
+                                ),
+                                _BottomNavItem(
+                                  icon: Icons.shopping_bag_outlined,
+                                  activeIcon: Icons.shopping_bag_rounded,
+                                  label: strings.get('nav_cart'),
+                                  selected: clampedIndex == 2,
+                                  badgeCount: cartCount,
+                                  pillSurfaceColor: surfaceColor,
+                                  activeCapsuleColor: activeCapsuleColor,
+                                  onTap: () => onSelectTab(2),
+                                ),
+                                _BottomNavItem(
+                                  icon: Icons.person_outline,
+                                  activeIcon: Icons.person_rounded,
+                                  label: strings.get('nav_account'),
+                                  selected: clampedIndex == 3,
+                                  pillSurfaceColor: surfaceColor,
+                                  activeCapsuleColor: activeCapsuleColor,
+                                  onTap: () => onSelectTab(3),
+                                ),
+                              ],
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            DecoratedBox(
+              key: const ValueKey<String>('apple-floating-search-button'),
+              decoration: _floatingSurfaceDecoration(
+                color: surfaceColor,
+                borderColor: borderColor,
+                isDark: isDark,
+                shape: BoxShape.circle,
+              ),
+              child: SizedBox(
+                width: 62,
+                height: 62,
+                child: Semantics(
+                  button: true,
+                  label: strings.get('nav_search'),
+                  child: Tooltip(
+                    message: strings.get('nav_search'),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: onOpenSearch,
+                        child: Center(
+                          child: Icon(
+                            Icons.search_rounded,
+                            size: 24,
+                            color: palette.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _BottomNavItem extends StatelessWidget {
   const _BottomNavItem({
     required this.icon,
     required this.activeIcon,
     required this.label,
     required this.selected,
+    required this.pillSurfaceColor,
+    required this.activeCapsuleColor,
     required this.onTap,
     this.badgeCount = 0,
   });
@@ -494,6 +662,8 @@ class _BottomNavItem extends StatelessWidget {
   final IconData activeIcon;
   final String label;
   final bool selected;
+  final Color pillSurfaceColor;
+  final Color activeCapsuleColor;
   final VoidCallback onTap;
   final int badgeCount;
 
@@ -504,54 +674,82 @@ class _BottomNavItem extends StatelessWidget {
     final color = selected ? AppColors.terracotta : palette.textSecondary;
 
     return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Stack(
-              clipBehavior: Clip.none,
-              children: <Widget>[
-                Icon(selected ? activeIcon : icon, size: 22, color: color),
-                if (badgeCount > 0)
-                  Positioned(
-                    top: -4,
-                    right: -8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.terracotta,
-                        borderRadius: BorderRadius.circular(AppRadii.pill),
-                      ),
-                      child: Text(
-                        '$badgeCount',
-                        style: AppTheme.monoStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.pureWhite,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          onTap: onTap,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              AnimatedScale(
+                scale: selected ? 1.0 : 0.94,
+                duration: AppMotion.microTap,
+                curve: AppMotion.curve,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: <Widget>[
+                    Icon(selected ? activeIcon : icon, size: 21, color: color),
+                    if (badgeCount > 0)
+                      Positioned(
+                        top: -4,
+                        right: -9,
+                        child: Container(
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.terracotta,
+                            borderRadius: BorderRadius.circular(AppRadii.pill),
+                            border: Border.all(
+                              color: selected
+                                  ? activeCapsuleColor
+                                  : pillSurfaceColor,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              badgeCount > 99 ? '99+' : '$badgeCount',
+                              style: AppTheme.monoStyle(
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.pureWhite,
+                                height: 1.0,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 2),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: AppTheme.bodyStyle(
+                      locale: locale,
+                      fontSize: 10.5,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                      color: color,
+                      height: 1.25,
                     ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTheme.bodyStyle(
-                locale: locale,
-                fontSize: 10.5,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: color,
-                height: 1.2,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

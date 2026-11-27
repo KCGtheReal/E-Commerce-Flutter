@@ -9,6 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:reset_store/core/api/api_client.dart';
 import 'package:reset_store/core/storage/app_storage.dart';
 import 'package:reset_store/core/theme/app_theme.dart';
+import 'package:reset_store/core/theme/app_tokens.dart';
+import 'package:reset_store/models/cart_models.dart';
 import 'package:reset_store/providers/app_navigation_provider.dart';
 import 'package:reset_store/providers/app_settings_provider.dart';
 import 'package:reset_store/providers/auth_provider.dart';
@@ -20,6 +22,7 @@ import 'package:reset_store/screens/home/home_screen.dart';
 import 'package:reset_store/screens/product/product_detail_screen.dart';
 import 'package:reset_store/screens/shop/shop_screen.dart';
 import 'package:reset_store/widgets/reset_scaffold.dart';
+import 'package:reset_store/widgets/search_modal.dart';
 import 'test_helpers.dart';
 
 Future<Widget> _wrapApp({
@@ -27,14 +30,21 @@ Future<Widget> _wrapApp({
   required AppStorage storage,
   required Widget child,
   CartProvider? cartProvider,
+  AppNavigationProvider? navProvider,
+  AppSettingsProvider? settingsProvider,
+  Brightness brightness = Brightness.light,
+  String locale = 'en',
+  bool wrapInScaffold = true,
 }) async {
   final cart = cartProvider ?? CartProvider(apiClient);
+  final nav = navProvider ?? AppNavigationProvider();
+  final settings = settingsProvider ?? AppSettingsProvider(storage);
   return MultiProvider(
     providers: [
       Provider<AppStorage>.value(value: storage),
       Provider<ApiClient>.value(value: apiClient),
-      ChangeNotifierProvider(create: (_) => AppNavigationProvider()),
-      ChangeNotifierProvider(create: (_) => AppSettingsProvider(storage)),
+      ChangeNotifierProvider<AppNavigationProvider>.value(value: nav),
+      ChangeNotifierProvider<AppSettingsProvider>.value(value: settings),
       ChangeNotifierProvider(create: (_) => BootstrapProvider(apiClient)),
       ChangeNotifierProvider<CartProvider>.value(value: cart),
       ChangeNotifierProvider(create: (_) => WishlistProvider(apiClient)),
@@ -43,8 +53,8 @@ Future<Widget> _wrapApp({
       ),
     ],
     child: MaterialApp(
-      theme: AppTheme.build(brightness: Brightness.light, locale: 'en'),
-      home: Scaffold(body: child),
+      theme: AppTheme.build(brightness: brightness, locale: locale),
+      home: wrapInScaffold ? Scaffold(body: child) : child,
     ),
   );
 }
@@ -476,5 +486,140 @@ void main() {
     expect(region.value.statusBarIconBrightness, Brightness.light);
     expect(region.value.statusBarBrightness, Brightness.dark);
     expect(region.value.systemNavigationBarIconBrightness, Brightness.dark);
+  });
+
+  testWidgets(
+      'ResetScaffold renders solid Apple-style floating navbar and detached search on mobile',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final storage = await AppStorage.create();
+    final apiClient = ApiClient(
+      storage: storage,
+      httpClient: MockClient(
+        (_) async => jsonMockResponse(<String, dynamic>{
+          'popular_searches': <String>[],
+          'categories': <dynamic>[],
+          'products': <dynamic>[],
+        }),
+      ),
+    );
+    final nav = AppNavigationProvider();
+    final cart = CartProvider(apiClient)
+      ..hydrateFromPayload(
+        CartPayloadDto.fromJson(<String, dynamic>{'item_count': 3}),
+      );
+
+    await tester.pumpWidget(
+      await _wrapApp(
+        apiClient: apiClient,
+        storage: storage,
+        navProvider: nav,
+        cartProvider: cart,
+        wrapInScaffold: false,
+        child: const ResetScaffold(
+          showBottomNav: true,
+          body: SizedBox.expand(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(BackdropFilter), findsNothing);
+
+    final pillFinder = find.byKey(const ValueKey<String>('apple-floating-nav-pill'));
+    final searchFinder =
+        find.byKey(const ValueKey<String>('apple-floating-search-button'));
+    expect(pillFinder, findsOneWidget);
+    expect(searchFinder, findsOneWidget);
+
+    final pillDecor =
+        tester.widget<DecoratedBox>(pillFinder).decoration as BoxDecoration;
+    final searchDecor =
+        tester.widget<DecoratedBox>(searchFinder).decoration as BoxDecoration;
+    expect(pillDecor.color, AppColors.pureWhite);
+    expect(pillDecor.color?.a, 1.0);
+    expect(searchDecor.shape, BoxShape.circle);
+    expect(searchDecor.color, AppColors.pureWhite);
+    expect(searchDecor.color?.a, 1.0);
+
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Shop'), findsOneWidget);
+    expect(find.text('Bag'), findsOneWidget);
+    expect(find.text('Account'), findsOneWidget);
+    expect(
+      find.descendant(of: pillFinder, matching: find.text('3')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Shop'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(nav.tabIndex, 1);
+
+    await tester.tap(find.text('Bag'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(nav.tabIndex, 2);
+
+    await tester.tap(find.text('Account'));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(nav.tabIndex, 3);
+
+    await tester.tap(searchFinder);
+    await tester.pumpAndSettle();
+    expect(find.byType(SearchModal), findsOneWidget);
+  });
+
+  testWidgets(
+      'Apple-style floating navbar supports Dark Mode and Khmer locale cleanly at 360px',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final storage = await AppStorage.create();
+    final apiClient = ApiClient(
+      storage: storage,
+      httpClient: MockClient((_) async => jsonMockResponse(<String, dynamic>{})),
+    );
+    final settings = AppSettingsProvider(storage);
+    await settings.setLocale('km');
+
+    await tester.pumpWidget(
+      await _wrapApp(
+        apiClient: apiClient,
+        storage: storage,
+        settingsProvider: settings,
+        brightness: Brightness.dark,
+        locale: 'km',
+        wrapInScaffold: false,
+        child: const ResetScaffold(
+          showBottomNav: true,
+          body: SizedBox.expand(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(find.text('ទំព័រដើម'), findsOneWidget);
+    expect(find.text('ទំនិញ'), findsOneWidget);
+    expect(find.text('កន្ត្រក'), findsOneWidget);
+    expect(find.text('គណនី'), findsOneWidget);
+
+    final pillFinder = find.byKey(const ValueKey<String>('apple-floating-nav-pill'));
+    final pillDecor =
+        tester.widget<DecoratedBox>(pillFinder).decoration as BoxDecoration;
+    expect(pillDecor.color, AppColors.softCharcoal);
+    expect(pillDecor.color?.a, 1.0);
   });
 }

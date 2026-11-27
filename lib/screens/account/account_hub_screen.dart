@@ -27,7 +27,12 @@ class AccountHubScreen extends StatelessWidget {
     final user = auth.user;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        24,
+        16,
+        24 + MediaQuery.paddingOf(context).bottom,
+      ),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),

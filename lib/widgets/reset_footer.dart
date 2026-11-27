@@ -94,12 +94,16 @@ class _ResetFooterState extends State<ResetFooter> {
     final width = MediaQuery.sizeOf(context).width;
     final isWide = !AppBreakpoints.isMobile(width);
 
+    final bottomSafePadding = isWide ? 0.0 : MediaQuery.paddingOf(context).bottom;
+
     return Container(
       width: double.infinity,
       color: AppColors.onyxBlack,
-      padding: EdgeInsets.symmetric(
-        horizontal: isWide ? 32 : 18,
-        vertical: isWide ? 48 : 36,
+      padding: EdgeInsets.fromLTRB(
+        isWide ? 32 : 18,
+        isWide ? 48 : 36,
+        isWide ? 32 : 18,
+        (isWide ? 48 : 36) + bottomSafePadding,
       ),
       child: Center(
         child: ConstrainedBox(
