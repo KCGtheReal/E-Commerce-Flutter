@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "380926366953",
+    "project_id": "reset-store-ecommerce",
+    "storage_bucket": "reset-store-ecommerce.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:380926366953:android:f970f24e557ee025fe8c78",
+        "android_client_info": {
+          "package_name": "store.reset.reset_store"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMrt0tZdzccjMK00HxXDdgz1n6Z2Yi61U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
