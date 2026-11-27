@@ -737,29 +737,18 @@ void main() {
   });
 
   testWidgets(
-      'PreferencesSheet renders Firebase API Docs button and derived Gateway URL without overflow',
+      'PreferencesSheet renders language, currency, appearance, and help links without developer admin bar or overflow',
       (tester) async {
     tester.view.physicalSize = const Size(360, 780);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
 
-    await SharedPreferences.getInstance().then(
-      (prefs) => prefs.setString(
-        'reset_api_base_url',
-        'http://192.168.1.50:8000',
-      ),
-    );
     final storage = await AppStorage.create();
-    final api = ApiClient(
-      storage: storage,
-      httpClient: MockClient((_) async => jsonMockResponse(<String, dynamic>{})),
-    );
 
     await tester.pumpWidget(
       MultiProvider(
         providers: [
           Provider<AppStorage>.value(value: storage),
-          Provider<ApiClient>.value(value: api),
           ChangeNotifierProvider<AppSettingsProvider>(
             create: (_) => AppSettingsProvider(storage),
           ),
@@ -772,14 +761,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Firebase API Docs'), findsOneWidget);
-    await tester.tap(find.byTooltip('API Server URL'));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('Firebase Gateway: http://192.168.1.50:4000'),
-      findsOneWidget,
-    );
+    expect(find.text('Studio Preferences & Info'), findsOneWidget);
+    expect(find.text('EN'), findsOneWidget);
+    expect(find.text('Web Admin (/admin)'), findsNothing);
+    expect(find.byTooltip('Firebase API Docs'), findsNothing);
+    expect(find.byTooltip('API Server URL'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

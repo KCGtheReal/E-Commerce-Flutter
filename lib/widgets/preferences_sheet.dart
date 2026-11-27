@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import '../core/api/api_client.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/app_tokens.dart';
 import '../providers/app_settings_provider.dart';
@@ -27,25 +25,6 @@ class PreferencesSheet extends StatefulWidget {
 }
 
 class _PreferencesSheetState extends State<PreferencesSheet> {
-  late final TextEditingController _urlController;
-  bool _showServerField = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final settings = context.read<AppSettingsProvider>();
-    _urlController = TextEditingController(
-      text: settings.customBaseUrl ??
-          context.read<ApiClient>().currentBaseUrl,
-    );
-  }
-
-  @override
-  void dispose() {
-    _urlController.dispose();
-    super.dispose();
-  }
-
   Future<void> _refreshStoreContext() async {
     final bootstrap = context.read<BootstrapProvider>();
     final cart = context.read<CartProvider>();
@@ -69,7 +48,6 @@ class _PreferencesSheetState extends State<PreferencesSheet> {
     final palette = context.palette;
     final settings = context.watch<AppSettingsProvider>();
     final strings = settings.strings;
-    final apiClient = context.read<ApiClient>();
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -194,76 +172,6 @@ class _PreferencesSheetState extends State<PreferencesSheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Divider(color: palette.borderSubtle),
-            const SizedBox(height: 8),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      launchUrl(
-                        Uri.parse(apiClient.adminPanelUrl),
-                        mode: LaunchMode.externalApplication,
-                      );
-                    },
-                    icon: const Icon(Icons.admin_panel_settings_outlined, size: 16),
-                    label: Text(
-                      strings.get('admin_panel'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                IconButton(
-                  tooltip: strings.get('firebase_api_docs'),
-                  onPressed: () {
-                    launchUrl(
-                      Uri.parse(apiClient.firebaseSwaggerDocsUrl),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  },
-                  icon: Icon(
-                    Icons.local_fire_department_outlined,
-                    color: palette.textSecondary,
-                  ),
-                ),
-                IconButton(
-                  tooltip: strings.get('error_server_config'),
-                  onPressed: () {
-                    setState(() => _showServerField = !_showServerField);
-                  },
-                  icon: Icon(
-                    Icons.tune,
-                    color: palette.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-            if (_showServerField) ...<Widget>[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _urlController,
-                decoration: InputDecoration(
-                  labelText: strings.get('error_server_config'),
-                  hintText: 'http://127.0.0.1:8000',
-                  helperText: apiClient.currentFirebaseBaseUrl.isEmpty
-                      ? 'Firebase Gateway: Routed via backend / Cloud Firestore'
-                      : 'Firebase Gateway: ${apiClient.currentFirebaseBaseUrl}',
-                  suffixIcon: TextButton(
-                    onPressed: () async {
-                      await settings.setCustomBaseUrl(_urlController.text);
-                      await _refreshStoreContext();
-                      if (mounted) {
-                        setState(() => _showServerField = false);
-                      }
-                    },
-                    child: Text(strings.get('save')),
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),
