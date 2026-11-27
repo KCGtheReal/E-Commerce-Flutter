@@ -13,6 +13,7 @@ import 'package:reset_store/core/firebase/firebase_gateway_client.dart';
 import 'package:reset_store/core/firebase/runtime_endpoint_resolver.dart';
 import 'package:reset_store/core/storage/app_storage.dart';
 import 'package:reset_store/core/theme/app_theme.dart';
+import 'package:reset_store/models/bootstrap_page_models.dart';
 import 'package:reset_store/models/catalog_models.dart';
 import 'package:reset_store/providers/app_settings_provider.dart';
 import 'package:reset_store/widgets/preferences_sheet.dart';
@@ -791,7 +792,11 @@ void main() {
       final mockHttp = MockClient((request) async {
         final full = request.url.toString();
         if (full == 'http://10.30.0.158:8000/api/v1/pages/about') {
-          return jsonMockResponse(<String, dynamic>{'page': <String, dynamic>{}});
+          return jsonMockResponse(<String, dynamic>{
+            'slug': 'about',
+            'locale': 'en',
+            'title': 'Form. Substance. Renewal.',
+          });
         }
         if (full == 'http://10.30.0.158:4000/health') {
           return jsonMockResponse(<String, dynamic>{'status': 'ok'});
@@ -824,7 +829,11 @@ void main() {
         final full = request.url.toString();
         if (full == 'https://demo.trycloudflare.com/api/v1/pages/about') {
           expect(request.headers['Bypass-Tunnel-Reminder'], 'true');
-          return jsonMockResponse(<String, dynamic>{'page': <String, dynamic>{}});
+          return jsonMockResponse(<String, dynamic>{
+            'slug': 'about',
+            'locale': 'en',
+            'title': 'Form. Substance. Renewal.',
+          });
         }
         return http.Response('Network unreachable', 504);
       });
@@ -871,6 +880,68 @@ void main() {
       } finally {
         debugDefaultTargetPlatformOverride = null;
       }
+    });
+
+    test(
+        'ApiClient coalesces discovery before Home/Bootstrap and does not race 10.0.2.2',
+        () async {
+      var resolveCount = 0;
+      final requestedUrls = <String>[];
+
+      final probeHttp = MockClient((request) async {
+        if (request.url.toString() ==
+            'https://live-cf.trycloudflare.com/api/v1/pages/about') {
+          return jsonMockResponse(<String, dynamic>{
+            'slug': 'about',
+            'title': 'Form. Substance. Renewal.',
+          });
+        }
+        return http.Response('offline', 504);
+      });
+
+      final resolver = RuntimeEndpointResolver(
+        httpClient: probeHttp,
+        localProbeTimeout: const Duration(milliseconds: 20),
+        endpointsFetcher: () async {
+          resolveCount += 1;
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+          return const DiscoveredRuntimeEndpoints(
+            lanApiUrl: 'http://10.30.0.158:8000',
+            tunnelUrl: 'https://live-cf.trycloudflare.com',
+          );
+        },
+      );
+
+      final apiHttp = MockClient((request) async {
+        requestedUrls.add(request.url.toString());
+        if (request.url.path == '/api/v1/bootstrap') {
+          return jsonMockResponse(_sampleBootstrapPayload());
+        }
+        if (request.url.path == '/api/v1/home') {
+          return jsonMockResponse(_sampleHomePayload());
+        }
+        return jsonMockResponse(<String, dynamic>{}, 404);
+      });
+
+      final storage = await AppStorage.create();
+      final client = ApiClient(
+        storage: storage,
+        httpClient: apiHttp,
+        runtimeEndpointResolver: resolver,
+      );
+
+      final results = await Future.wait<Object>(<Future<Object>>[
+        client.getBootstrap(),
+        client.getHome(),
+      ]);
+
+      expect(resolveCount, 1);
+      expect(results[0], isA<BootstrapResponse>());
+      expect(results[1], isA<HomeResponse>());
+      expect(requestedUrls, <String>[
+        'https://live-cf.trycloudflare.com/api/v1/bootstrap',
+        'https://live-cf.trycloudflare.com/api/v1/home',
+      ]);
     });
   });
 }

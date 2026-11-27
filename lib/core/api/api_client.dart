@@ -58,6 +58,7 @@ class ApiClient {
   final RuntimeEndpointResolver? _runtimeEndpointResolver;
   late final FirebaseGatewayClient? _firebaseGateway;
   bool _runtimeDiscoveryAttempted = false;
+  Future<void>? _inFlightDiscovery;
   String Function()? _localeResolver;
   String Function()? _currencyResolver;
   String? Function()? _baseUrlResolver;
@@ -108,7 +109,9 @@ class ApiClient {
   /// Discovers the PC backend URL (Wi-Fi LAN IP or live Cloudflare tunnel)
   /// from Cloud Firestore on native builds when no manual URL override is set.
   Future<void> resolveRuntimeEndpointsIfNeeded({bool force = false}) async {
-    if (kIsWeb || _hasInjectedHttpClient || AppConfig.hasBuildDefinedApiUrl) {
+    if (kIsWeb ||
+        AppConfig.hasBuildDefinedApiUrl ||
+        (_hasInjectedHttpClient && _runtimeEndpointResolver == null)) {
       return;
     }
     final customUrl =
@@ -121,7 +124,26 @@ class ApiClient {
         AppConfig.discoveredBaseUrl != null) {
       return;
     }
+    if (!force && _inFlightDiscovery != null) {
+      await _inFlightDiscovery;
+      return;
+    }
+    if (force && _inFlightDiscovery != null) {
+      await _inFlightDiscovery;
+    }
 
+    final future = _runRuntimeDiscovery(force: force);
+    _inFlightDiscovery = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_inFlightDiscovery, future)) {
+        _inFlightDiscovery = null;
+      }
+    }
+  }
+
+  Future<void> _runRuntimeDiscovery({required bool force}) async {
     _runtimeDiscoveryAttempted = true;
     final resolver = _runtimeEndpointResolver ?? RuntimeEndpointResolver();
     final resolved = await resolver.resolve();
@@ -148,6 +170,7 @@ class ApiClient {
   // ---------------------------------------------------------------------------
 
   Future<BootstrapResponse> getBootstrap() async {
+    await resolveRuntimeEndpointsIfNeeded();
     try {
       final json = await _requestJson('GET', ApiEndpoints.bootstrap);
       final res = BootstrapResponse.fromJson(json);
@@ -169,6 +192,7 @@ class ApiClient {
   }
 
   Future<HomeResponse> getHome() async {
+    await resolveRuntimeEndpointsIfNeeded();
     final gateway = _firebaseGateway;
     if (gateway != null) {
       final firebaseRes = await gateway.getHome();
@@ -183,6 +207,7 @@ class ApiClient {
   Future<ProductsResponse> getProducts([
     ProductsQuery query = const ProductsQuery(),
   ]) async {
+    await resolveRuntimeEndpointsIfNeeded();
     final gateway = _firebaseGateway;
     if (gateway != null) {
       final firebaseRes = await gateway.getProducts(query);
@@ -199,6 +224,7 @@ class ApiClient {
   }
 
   Future<SearchSuggestResponse> searchSuggest(String query) async {
+    await resolveRuntimeEndpointsIfNeeded();
     final gateway = _firebaseGateway;
     if (gateway != null) {
       final firebaseRes = await gateway.searchSuggest(query);
@@ -217,6 +243,7 @@ class ApiClient {
   }
 
   Future<ProductDetailResponse> getProductDetail(String slug) async {
+    await resolveRuntimeEndpointsIfNeeded();
     final gateway = _firebaseGateway;
     final isGuest = storage.getAuthToken() == null;
     if (isGuest && gateway != null) {
@@ -738,7 +765,10 @@ class ApiClient {
     Map<String, dynamic>? body,
     String? orderTokenOverride,
     bool triggerUnauthorizedCallback = false,
+    bool allowDiscoveryRetry = true,
   }) async {
+    await resolveRuntimeEndpointsIfNeeded();
+    final attemptBaseUrl = currentBaseUrl;
     final uri = _buildUri(path, queryParameters);
     final headers = _buildHeaders(
       orderTokenOverride: orderTokenOverride,
@@ -782,12 +812,36 @@ class ApiClient {
           );
       }
     } on TimeoutException {
+      if (allowDiscoveryRetry &&
+          await _tryRediscoverEndpoint(previousBaseUrl: attemptBaseUrl)) {
+        return _requestJson(
+          method,
+          path,
+          queryParameters: queryParameters,
+          body: body,
+          orderTokenOverride: orderTokenOverride,
+          triggerUnauthorizedCallback: triggerUnauthorizedCallback,
+          allowDiscoveryRetry: false,
+        );
+      }
       throw const ApiException(
         statusCode: 0,
         code: 'NETWORK_TIMEOUT',
         message: 'Connection timed out. Please check your network and retry.',
       );
     } on http.ClientException catch (e) {
+      if (allowDiscoveryRetry &&
+          await _tryRediscoverEndpoint(previousBaseUrl: attemptBaseUrl)) {
+        return _requestJson(
+          method,
+          path,
+          queryParameters: queryParameters,
+          body: body,
+          orderTokenOverride: orderTokenOverride,
+          triggerUnauthorizedCallback: triggerUnauthorizedCallback,
+          allowDiscoveryRetry: false,
+        );
+      }
       throw ApiException(
         statusCode: 0,
         code: 'NETWORK_ERROR',
@@ -857,5 +911,11 @@ class ApiClient {
       message: asString(decoded['message'], fallback: fallbackMessage),
       errors: parsedErrors,
     );
+  }
+
+  Future<bool> _tryRediscoverEndpoint({required String previousBaseUrl}) async {
+    await resolveRuntimeEndpointsIfNeeded(force: true);
+    return currentBaseUrl != previousBaseUrl &&
+        AppConfig.discoveredBaseUrl != null;
   }
 }

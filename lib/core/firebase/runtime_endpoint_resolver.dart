@@ -75,8 +75,8 @@ class RuntimeEndpointResolver {
   RuntimeEndpointResolver({
     http.Client? httpClient,
     RuntimeEndpointsFetcher? endpointsFetcher,
-    Duration localProbeTimeout = const Duration(milliseconds: 900),
-    Duration tunnelProbeTimeout = const Duration(milliseconds: 2500),
+    Duration localProbeTimeout = const Duration(milliseconds: 700),
+    Duration tunnelProbeTimeout = const Duration(seconds: 3),
   })  : _httpClient = httpClient ?? http.Client(),
         _endpointsFetcher = endpointsFetcher,
         _localProbeTimeout = localProbeTimeout,
@@ -139,22 +139,30 @@ class RuntimeEndpointResolver {
       }
     }
 
-    // 2. Phone is away from PC LAN (e.g. 4G/5G or isolated Wi-Fi): try live HTTPS tunnels.
+    // 2. Phone is away from PC LAN (e.g. 4G/5G or Public Firewall): try live HTTPS tunnels concurrently.
     final tunnelCandidates = <String>[
       if (discovered?.tunnelUrl != null && discovered!.tunnelUrl!.isNotEmpty)
         discovered.tunnelUrl!,
       if (discovered?.localtunnelUrl != null &&
-          discovered!.localtunnelUrl!.isNotEmpty)
+          discovered!.localtunnelUrl!.isNotEmpty &&
+          discovered.localtunnelUrl != discovered.tunnelUrl)
         discovered.localtunnelUrl!,
     ];
 
-    for (final tunnelUrl in tunnelCandidates) {
-      if (await _isLaravelReachable(tunnelUrl, _tunnelProbeTimeout)) {
-        // HTTPS tunnel proxies directly to PC Laravel, which already calls PC :4000.
-        return ResolvedEndpointSelection(
-          backendUrl: tunnelUrl,
-          gatewayUrl: '',
-        );
+    if (tunnelCandidates.isNotEmpty) {
+      final tunnelChecks = await Future.wait<bool>(
+        tunnelCandidates.map(
+          (url) => _isLaravelReachable(url, _tunnelProbeTimeout),
+        ),
+      );
+      for (var i = 0; i < tunnelCandidates.length; i++) {
+        if (tunnelChecks[i]) {
+          // HTTPS tunnel proxies directly to PC Laravel, which already calls PC :4000.
+          return ResolvedEndpointSelection(
+            backendUrl: tunnelCandidates[i],
+            gatewayUrl: '',
+          );
+        }
       }
     }
 
@@ -213,7 +221,10 @@ class RuntimeEndpointResolver {
       }
 
       final decoded = jsonDecode(response.body);
-      return decoded is Map && decoded.containsKey('page');
+      return decoded is Map &&
+          (decoded['slug'] == 'about' ||
+              decoded.containsKey('title') ||
+              decoded.containsKey('page'));
     } catch (_) {
       return false;
     }
