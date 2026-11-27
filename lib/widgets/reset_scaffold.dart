@@ -169,11 +169,7 @@ class _MobileHeader extends StatelessWidget {
             icon: const Icon(Icons.arrow_back),
           )
         else
-          IconButton(
-            tooltip: settings.strings.get('preferences_title'),
-            onPressed: () => PreferencesSheet.show(context),
-            icon: const Icon(Icons.menu),
-          ),
+          const SizedBox(width: 8),
         if (title != null && title!.isNotEmpty)
           Expanded(
             child: Text(
