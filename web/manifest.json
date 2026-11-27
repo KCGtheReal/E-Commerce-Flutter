@@ -1,11 +1,11 @@
 {
-    "name": "reset_store",
-    "short_name": "reset_store",
+    "name": "RESET",
+    "short_name": "RESET",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#111111",
+    "theme_color": "#111111",
+    "description": "RESET — Modern minimalist streetwear essentials & native Bakong KHQR checkout.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

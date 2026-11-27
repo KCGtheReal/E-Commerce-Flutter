@@ -119,7 +119,7 @@ class _ResetMaterialAppState extends State<_ResetMaterialApp> {
     final settings = context.watch<AppSettingsProvider>();
 
     return MaterialApp(
-      title: 'RESET Store',
+      title: 'RESET',
       debugShowCheckedModeBanner: false,
       themeMode: settings.themeMode,
       theme: AppTheme.build(
