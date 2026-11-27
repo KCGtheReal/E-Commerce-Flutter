@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/app_theme.dart';
@@ -48,9 +49,14 @@ class ResetScaffold extends StatelessWidget {
     final cartCount = context.watch<CartProvider>().itemCount;
     final nav = context.watch<AppNavigationProvider>();
     final auth = context.watch<AuthProvider>();
+    final overlayStyle = AppTheme.systemOverlayStyle(
+      brightness: Theme.of(context).brightness,
+    );
 
-    return Scaffold(
-      backgroundColor: palette.scaffoldBackground,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: Scaffold(
+        backgroundColor: palette.scaffoldBackground,
       body: Column(
         children: <Widget>[
           AnnouncementBar(
@@ -179,6 +185,7 @@ class ResetScaffold extends StatelessWidget {
               ),
             )
           : null,
+      ),
     );
   }
 }

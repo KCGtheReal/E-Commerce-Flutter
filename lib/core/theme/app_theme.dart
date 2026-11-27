@@ -1,10 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'app_tokens.dart';
 
 class AppTheme {
   AppTheme._();
+
+  /// The top AnnouncementBar stays Onyx Black (#111111) behind the status bar
+  /// in both light and dark modes, so system status icons must remain light.
+  static SystemUiOverlayStyle systemOverlayStyle({
+    required Brightness brightness,
+  }) {
+    final isDark = brightness == Brightness.dark;
+    final palette = isDark ? ResetPalette.dark : ResetPalette.light;
+    return SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: palette.scaffoldBackground,
+      systemNavigationBarDividerColor: palette.borderSubtle,
+      systemNavigationBarIconBrightness:
+          isDark ? Brightness.light : Brightness.dark,
+    );
+  }
 
   static TextStyle displayStyle({
     required String locale,
@@ -215,6 +234,7 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
+        systemOverlayStyle: systemOverlayStyle(brightness: brightness),
         shape: Border(bottom: borderSide),
       ),
       cardTheme: CardThemeData(

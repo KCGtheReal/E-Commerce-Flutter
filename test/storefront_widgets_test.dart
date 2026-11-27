@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/testing.dart';
@@ -18,6 +19,7 @@ import 'package:reset_store/screens/checkout/checkout_screen.dart';
 import 'package:reset_store/screens/home/home_screen.dart';
 import 'package:reset_store/screens/product/product_detail_screen.dart';
 import 'package:reset_store/screens/shop/shop_screen.dart';
+import 'package:reset_store/widgets/reset_scaffold.dart';
 import 'test_helpers.dart';
 
 Future<Widget> _wrapApp({
@@ -446,5 +448,33 @@ void main() {
     await tester.tap(find.text('Size Guide').first);
     await tester.pumpAndSettle();
     expect(find.text('Heavyweight T-Shirts & Tops (S–XL)'), findsOneWidget);
+  });
+
+  testWidgets('ResetScaffold enforces white status bar icons in Light Mode',
+      (tester) async {
+    final storage = await AppStorage.create();
+    final apiClient = ApiClient(
+      storage: storage,
+      httpClient: MockClient((_) async => jsonMockResponse(<String, dynamic>{})),
+    );
+
+    await tester.pumpWidget(
+      await _wrapApp(
+        apiClient: apiClient,
+        storage: storage,
+        child: const ResetScaffold(
+          body: SizedBox.shrink(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+      find.byType(AnnotatedRegion<SystemUiOverlayStyle>).first,
+    );
+    expect(region.value.statusBarColor, Colors.transparent);
+    expect(region.value.statusBarIconBrightness, Brightness.light);
+    expect(region.value.statusBarBrightness, Brightness.dark);
+    expect(region.value.systemNavigationBarIconBrightness, Brightness.dark);
   });
 }
