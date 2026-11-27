@@ -132,9 +132,8 @@ class FirebaseGatewayClient {
   }
 
   String get currentBaseUrl {
-    final resolved = _baseUrlResolver?.call().trim() ?? '';
-    if (resolved.isNotEmpty) {
-      return _normalizeBaseUrl(resolved);
+    if (_baseUrlResolver != null) {
+      return _normalizeBaseUrl(_baseUrlResolver!());
     }
     return AppConfig.resolveFirebaseApiBaseUrl(null);
   }
@@ -275,6 +274,10 @@ class FirebaseGatewayClient {
     String path, {
     Map<String, dynamic>? queryParameters,
   }) async {
+    final baseUrl = currentBaseUrl;
+    if (baseUrl.isEmpty) {
+      return null;
+    }
     try {
       final uri = _buildUri(path, queryParameters);
       final response = await _httpClient

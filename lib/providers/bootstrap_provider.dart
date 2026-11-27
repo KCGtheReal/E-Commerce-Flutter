@@ -119,6 +119,9 @@ class BootstrapProvider extends ChangeNotifier {
       notifyListeners();
     }
     try {
+      await _apiClient.resolveRuntimeEndpointsIfNeeded(
+        force: _data == null,
+      );
       final response = await _apiClient.getBootstrap();
       _data = response;
       _errorMessage = null;

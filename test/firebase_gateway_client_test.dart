@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:reset_store/core/api/api_client.dart';
 import 'package:reset_store/core/config/app_config.dart';
 import 'package:reset_store/core/firebase/firebase_gateway_client.dart';
+import 'package:reset_store/core/firebase/runtime_endpoint_resolver.dart';
 import 'package:reset_store/core/storage/app_storage.dart';
 import 'package:reset_store/core/theme/app_theme.dart';
 import 'package:reset_store/models/catalog_models.dart';
@@ -779,5 +780,97 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  group('RuntimeEndpointResolver zero-config mobile discovery', () {
+    tearDown(() {
+      AppConfig.clearDiscoveredEndpoints();
+    });
+
+    test('prefers reachable LAN IP + LAN Gateway on same Wi-Fi', () async {
+      final mockHttp = MockClient((request) async {
+        final full = request.url.toString();
+        if (full == 'http://10.30.0.158:8000/api/v1/pages/about') {
+          return jsonMockResponse(<String, dynamic>{'page': <String, dynamic>{}});
+        }
+        if (full == 'http://10.30.0.158:4000/health') {
+          return jsonMockResponse(<String, dynamic>{'status': 'ok'});
+        }
+        return jsonMockResponse(<String, dynamic>{}, 503);
+      });
+
+      final resolver = RuntimeEndpointResolver(
+        httpClient: mockHttp,
+        endpointsFetcher: () async => const DiscoveredRuntimeEndpoints(
+          lanApiUrl: 'http://10.30.0.158:8000',
+          lanGatewayUrl: 'http://10.30.0.158:4000',
+          tunnelUrl: 'https://demo.trycloudflare.com',
+        ),
+      );
+
+      final selected = await resolver.resolve(
+        platformOverride: TargetPlatform.android,
+        isWebOverride: false,
+      );
+      expect(selected, isNotNull);
+      expect(selected!.backendUrl, 'http://10.30.0.158:8000');
+      expect(selected.gatewayUrl, 'http://10.30.0.158:4000');
+    });
+
+    test(
+        'falls back to Cloudflare HTTPS tunnel and skips :4000 timeout when LAN unreachable',
+        () async {
+      final mockHttp = MockClient((request) async {
+        final full = request.url.toString();
+        if (full == 'https://demo.trycloudflare.com/api/v1/pages/about') {
+          expect(request.headers['Bypass-Tunnel-Reminder'], 'true');
+          return jsonMockResponse(<String, dynamic>{'page': <String, dynamic>{}});
+        }
+        return http.Response('Network unreachable', 504);
+      });
+
+      final resolver = RuntimeEndpointResolver(
+        httpClient: mockHttp,
+        localProbeTimeout: const Duration(milliseconds: 50),
+        endpointsFetcher: () async =>
+            DiscoveredRuntimeEndpoints.fromFirestoreDoc(<String, dynamic>{
+          'key': 'runtime_endpoints',
+          'value': <String, dynamic>{
+            'lan_api_url': 'http://10.30.0.158:8000',
+            'lan_gateway_url': 'http://10.30.0.158:4000',
+            'tunnel_url': 'https://demo.trycloudflare.com/',
+            'localtunnel_url': 'https://reset-store-cambodia.loca.lt',
+          },
+        }),
+      );
+
+      final selected = await resolver.resolve(
+        platformOverride: TargetPlatform.android,
+        isWebOverride: false,
+      );
+      expect(selected, isNotNull);
+      expect(selected!.backendUrl, 'https://demo.trycloudflare.com');
+      expect(selected.gatewayUrl, '');
+
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        AppConfig.setDiscoveredEndpoints(
+          baseUrl: selected.backendUrl,
+          firebaseBaseUrl: selected.gatewayUrl,
+        );
+        expect(AppConfig.resolveBaseUrl(null), 'https://demo.trycloudflare.com');
+        expect(AppConfig.resolveFirebaseApiBaseUrl(null), '');
+        expect(
+          AppConfig.resolveFirebaseApiBaseUrl('https://demo.trycloudflare.com'),
+          '',
+        );
+        expect(
+          AppConfig.firebaseSwaggerDocsUrl(),
+          'https://demo.trycloudflare.com/api/docs',
+        );
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
   });
 }

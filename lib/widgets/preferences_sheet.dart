@@ -248,8 +248,9 @@ class _PreferencesSheetState extends State<PreferencesSheet> {
                 decoration: InputDecoration(
                   labelText: strings.get('error_server_config'),
                   hintText: 'http://127.0.0.1:8000',
-                  helperText:
-                      'Firebase Gateway: ${apiClient.currentFirebaseBaseUrl}',
+                  helperText: apiClient.currentFirebaseBaseUrl.isEmpty
+                      ? 'Firebase Gateway: Routed via backend / Cloud Firestore'
+                      : 'Firebase Gateway: ${apiClient.currentFirebaseBaseUrl}',
                   suffixIcon: TextButton(
                     onPressed: () async {
                       await settings.setCustomBaseUrl(_urlController.text);

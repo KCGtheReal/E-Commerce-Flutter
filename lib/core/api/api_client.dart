@@ -11,6 +11,7 @@ import '../../models/catalog_models.dart';
 import '../../models/order_payment_models.dart';
 import '../config/app_config.dart';
 import '../firebase/firebase_gateway_client.dart';
+import '../firebase/runtime_endpoint_resolver.dart';
 import '../storage/app_storage.dart';
 import '../utils/json_helpers.dart';
 import 'api_endpoints.dart';
@@ -21,11 +22,14 @@ class ApiClient {
     required this.storage,
     http.Client? httpClient,
     FirebaseGatewayClient? firebaseGatewayClient,
+    RuntimeEndpointResolver? runtimeEndpointResolver,
     String Function()? localeResolver,
     String Function()? currencyResolver,
     String? Function()? baseUrlResolver,
     VoidCallback? onUnauthorized,
   })  : _httpClient = httpClient ?? http.Client(),
+        _hasInjectedHttpClient = httpClient != null,
+        _runtimeEndpointResolver = runtimeEndpointResolver,
         _localeResolver = localeResolver,
         _currencyResolver = currencyResolver,
         _baseUrlResolver = baseUrlResolver,
@@ -50,7 +54,10 @@ class ApiClient {
 
   final AppStorage storage;
   final http.Client _httpClient;
+  final bool _hasInjectedHttpClient;
+  final RuntimeEndpointResolver? _runtimeEndpointResolver;
   late final FirebaseGatewayClient? _firebaseGateway;
+  bool _runtimeDiscoveryAttempted = false;
   String Function()? _localeResolver;
   String Function()? _currencyResolver;
   String? Function()? _baseUrlResolver;
@@ -97,6 +104,36 @@ class ApiClient {
   String get firebaseSwaggerDocsUrl => AppConfig.firebaseSwaggerDocsUrl(
         baseUrl: _baseUrlResolver?.call() ?? storage.getCustomBaseUrl(),
       );
+
+  /// Discovers the PC backend URL (Wi-Fi LAN IP or live Cloudflare tunnel)
+  /// from Cloud Firestore on native builds when no manual URL override is set.
+  Future<void> resolveRuntimeEndpointsIfNeeded({bool force = false}) async {
+    if (kIsWeb || _hasInjectedHttpClient || AppConfig.hasBuildDefinedApiUrl) {
+      return;
+    }
+    final customUrl =
+        (_baseUrlResolver?.call() ?? storage.getCustomBaseUrl())?.trim() ?? '';
+    if (customUrl.isNotEmpty) {
+      return;
+    }
+    if (_runtimeDiscoveryAttempted &&
+        !force &&
+        AppConfig.discoveredBaseUrl != null) {
+      return;
+    }
+
+    _runtimeDiscoveryAttempted = true;
+    final resolver = _runtimeEndpointResolver ?? RuntimeEndpointResolver();
+    final resolved = await resolver.resolve();
+    if (resolved != null) {
+      AppConfig.setDiscoveredEndpoints(
+        baseUrl: resolved.backendUrl,
+        firebaseBaseUrl: resolved.gatewayUrl,
+      );
+    } else if (force) {
+      AppConfig.clearDiscoveredEndpoints();
+    }
+  }
 
   String webInvoiceUrl(String orderNumber) {
     return AppConfig.webInvoiceUrl(
@@ -664,6 +701,7 @@ class ApiClient {
       'X-Locale': locale,
       'Accept-Language': locale,
       'X-Currency': currency,
+      if (!kIsWeb) 'Bypass-Tunnel-Reminder': 'true',
     };
 
     if (hasBody) {

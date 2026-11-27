@@ -13,10 +13,51 @@ class AppConfig {
     defaultValue: '',
   );
 
+  static String? _discoveredBaseUrl;
+  static String? _discoveredFirebaseApiBaseUrl;
+
+  static bool get hasBuildDefinedApiUrl => definedApiBaseUrl.trim().isNotEmpty;
+
+  static bool get hasBuildDefinedFirebaseApiUrl =>
+      definedFirebaseApiBaseUrl.trim().isNotEmpty;
+
+  static String? get discoveredBaseUrl => _discoveredBaseUrl;
+
+  static String? get discoveredFirebaseApiBaseUrl =>
+      _discoveredFirebaseApiBaseUrl;
+
+  static void setDiscoveredEndpoints({
+    String? baseUrl,
+    String? firebaseBaseUrl,
+  }) {
+    final normalizedBase =
+        baseUrl != null && baseUrl.trim().isNotEmpty ? _normalizeBaseUrl(baseUrl) : null;
+    _discoveredBaseUrl = normalizedBase;
+
+    if (firebaseBaseUrl == null) {
+      _discoveredFirebaseApiBaseUrl = null;
+    } else if (firebaseBaseUrl.trim().isEmpty) {
+      _discoveredFirebaseApiBaseUrl = '';
+    } else {
+      _discoveredFirebaseApiBaseUrl = _normalizeBaseUrl(firebaseBaseUrl);
+    }
+  }
+
+  static void clearDiscoveredEndpoints() {
+    _discoveredBaseUrl = null;
+    _discoveredFirebaseApiBaseUrl = null;
+  }
+
   static String get defaultBaseUrl {
     final envUrl = definedApiBaseUrl.trim();
     if (envUrl.isNotEmpty) {
       return _normalizeBaseUrl(envUrl);
+    }
+
+    if (!kIsWeb &&
+        _discoveredBaseUrl != null &&
+        _discoveredBaseUrl!.trim().isNotEmpty) {
+      return _discoveredBaseUrl!;
     }
 
     if (kIsWeb) {
@@ -70,6 +111,9 @@ class AppConfig {
     if (backendTrimmed.isNotEmpty) {
       final parsed = Uri.tryParse(backendTrimmed);
       if (parsed != null && parsed.hasScheme && parsed.host.isNotEmpty) {
+        if (parsed.scheme.toLowerCase() == 'https') {
+          return '';
+        }
         final hostLower = parsed.host.toLowerCase();
         const localHosts = <String>{'127.0.0.1', 'localhost', '10.0.2.2'};
         if (!localHosts.contains(hostLower)) {
@@ -80,6 +124,12 @@ class AppConfig {
           ).toString();
         }
       }
+    }
+
+    if (backendTrimmed.isEmpty &&
+        !kIsWeb &&
+        _discoveredFirebaseApiBaseUrl != null) {
+      return _discoveredFirebaseApiBaseUrl!;
     }
 
     return defaultFirebaseApiBaseUrl();
@@ -112,7 +162,14 @@ class AppConfig {
     String? baseUrl,
     String? customFirebaseApiUrl,
   }) {
-    return '${resolveFirebaseApiBaseUrl(baseUrl, customFirebaseApiUrl: customFirebaseApiUrl)}/docs';
+    final gatewayBase = resolveFirebaseApiBaseUrl(
+      baseUrl,
+      customFirebaseApiUrl: customFirebaseApiUrl,
+    );
+    if (gatewayBase.isEmpty) {
+      return openApiDocsUrl(baseUrl: baseUrl);
+    }
+    return '$gatewayBase/docs';
   }
 
   static String webInvoiceUrl(
