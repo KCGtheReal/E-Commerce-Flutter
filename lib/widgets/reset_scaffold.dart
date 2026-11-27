@@ -223,10 +223,7 @@ class _MobileHeader extends StatelessWidget {
             ),
           ),
         ),
-        IconButton(
-          onPressed: () => SearchModal.show(context),
-          icon: const Icon(Icons.search, size: 21),
-        ),
+        const SizedBox(width: 4),
         Stack(
           alignment: Alignment.center,
           children: <Widget>[

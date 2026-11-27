@@ -533,6 +533,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(BackdropFilter), findsNothing);
     expect(find.byIcon(Icons.menu), findsNothing);
+    expect(find.byIcon(Icons.search), findsNothing);
 
     final pillFinder = find.byKey(const ValueKey<String>('apple-floating-nav-pill'));
     final searchFinder =
@@ -613,6 +614,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(BackdropFilter), findsNothing);
     expect(find.byIcon(Icons.menu), findsNothing);
+    expect(find.byIcon(Icons.search), findsNothing);
     expect(find.text('ទំព័រដើម'), findsOneWidget);
     expect(find.text('ទំនិញ'), findsOneWidget);
     expect(find.text('កន្ត្រក'), findsOneWidget);
